@@ -19,9 +19,19 @@ import { spawn } from 'child_process';
 import getWeather from './apis/weather';
 import { getDateRange } from './utils';
 import { WeatherRequest } from './apis/weather';
+import { createClient } from '@supabase/supabase-js';
 
-import { createTool, stringField, numberField, booleanField, apiKeyField } from '@ai-spine/tools';
+import {
+  createTool,
+  stringField,
+  numberField,
+  booleanField,
+  apiKeyField,
+  arrayField,
+} from '@ai-spine/tools';
 import { resolve } from 'path';
+import { json } from 'stream/consumers';
+import { request } from 'http';
 
 /**
  * Input interface defining the structure of data that users will provide
@@ -32,7 +42,8 @@ interface FrancisInput {
   city: string;
   start_date: string;
   end_date: string;
-  category: string;
+  category: string[];
+  price: number;
 }
 
 /**
@@ -96,11 +107,19 @@ const francisTool = createTool<FrancisInput, FrancisConfig>({
         minLength: 10,
         maxLength: 10,
       }),
-      category: stringField({
+      category: arrayField(
+        stringField({
+          required: true,
+          description: 'The category of activities to search for',
+          minLength: 1,
+          maxLength: 100,
+        })
+      ),
+      price: numberField({
         required: true,
-        description: 'The category of activities to search for',
-        minLength: 1,
-        maxLength: 100,
+        description: 'The price range for activities to search for',
+        min: 0,
+        max: 10000,
       }),
     },
 
@@ -114,12 +133,6 @@ const francisTool = createTool<FrancisInput, FrancisConfig>({
         required: false,
         description: 'Optional API key for external services',
       }),
-      default_count: {
-        type: 'number',
-        required: false,
-        description: 'Default count when not specified in input',
-        default: 1,
-      },
     },
   },
 
@@ -137,6 +150,13 @@ const francisTool = createTool<FrancisInput, FrancisConfig>({
     console.log(`Executing francis tool with execution ID: ${context.executionId}`);
 
     try {
+      const supabase = createClient(
+        process.env.SUPABASE_URL as string,
+        process.env.SUPABASE_KEY as string
+      );
+      const { data, error } = await supabase.from('requests').insert({}).select();
+
+      const requestId = data?.[0]?.id ?? null;
       // const result = await new Promise<string>((resolve, reject) => {
       //   const python = spawn('python3', ['src/scripts/main.py'], {
       //     env: {
@@ -181,18 +201,74 @@ const francisTool = createTool<FrancisInput, FrancisConfig>({
       const endDate = input.end_date;
       const location = input.city;
       const category = input.category;
+      const price = input.price;
       const dateRange = getDateRange(startDate, endDate);
-
+      console.log(input);
       const weatherRequest: WeatherRequest = {
         location,
         days: dateRange,
       };
       const weatherReports = await getWeather(weatherRequest);
+      console.log('2');
+      const forecasts = weatherReports.map(report => ({
+        json: report,
+        request_id: requestId,
+      }));
+
+      const { data: weatherData, error: weatherError } = await supabase
+        .from('weather_forecasts')
+        .insert(forecasts);
+
+      const scrapping = await new Promise<any>((resolve, reject) => {
+        const python = spawn('python3', ['src/scripts/betterScrapper.py'], {
+          env: {
+            ...process.env,
+            GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+            SUPABASE_URL: process.env.SUPABASE_URL,
+            SUPABASE_KEY: process.env.SUPABASE_KEY,
+          },
+        });
+
+        let output = '';
+        let errorOutput = '';
+
+        python.stdin.write(
+          JSON.stringify({
+            start_date: startDate,
+            end_date: endDate,
+            city: location,
+            category,
+            price,
+          })
+        );
+        python.stdin.end();
+
+        python.stdout.on('data', data => {
+          output += data.toString();
+        });
+
+        python.stderr.on('data', data => {
+          errorOutput += data.toString();
+        });
+
+        python.on('close', code => {
+          if (code !== 0) {
+            reject(new Error(`Python process exited with code ${code}: ${errorOutput}`));
+          } else {
+            try {
+              resolve(output);
+            } catch (err) {
+              reject(new Error('Error parsing Python output: ' + err));
+            }
+          }
+        });
+      });
+
+      console.log(scrapping);
 
       return {
         status: 'success',
         data: {
-          weather: weatherReports,
           metadata: {
             execution_id: context.executionId,
             timestamp: context.timestamp.toISOString(),

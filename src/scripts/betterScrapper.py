@@ -14,10 +14,17 @@ from googlesearch import search
 from google import genai
 from pydantic import BaseModel
 from dotenv import load_dotenv
+import sys
+from supabase import create_client, Client
 
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+url: str = os.getenv("SUPABASE_URL")
+key: str = os.getenv("SUPABASE_KEY")
+supabase: Client = create_client(url, key)
 
 class Actividad(BaseModel):
     url: str
@@ -417,14 +424,14 @@ class DynamicEventScraper:
 
     def scraping_completo(self, input_data: Dict) -> List[Dict]:
         logger.info(f"=== INICIANDO SCRAPING DINÁMICO ===")
-        logger.info(f"Ubicación: {input_data['ubicacion']}")
-        logger.info(f"Actividades: {input_data['actividad']}")
+        logger.info(f"Ubicación: {input_data['city']}")
+        logger.info(f"Actividades: {input_data['category']}")
 
         todas_las_urls = set()
 
-        for actividad in input_data["actividad"]:
+        for actividad in input_data["category"]:
             logger.info(f"\n--- Buscando URLs para: {actividad} ---")
-            urls_actividad = self.buscar_urls_con_google(actividad, input_data["ubicacion"])
+            urls_actividad = self.buscar_urls_con_google(actividad, input_data["city"])
             todas_las_urls.update(urls_actividad)
             logger.info(f"URLs encontradas para '{actividad}': {len(urls_actividad)}")
 
@@ -470,7 +477,7 @@ class DynamicEventScraper:
 
     def _buscar_urls_alternativo(self, input_data: Dict) -> Set[str]:
         urls = set()
-        ciudad = input_data["ubicacion"].split(',')[0].strip()
+        ciudad = input_data["city"].split(',')[0].strip()
 
         urls_base = [
             f"https://www.google.com/search?q=eventos+{ciudad}+museo+teatro",
@@ -539,30 +546,17 @@ def main():
         max_urls_per_activity=6,
         gemini_model="gemini-1.5-flash"
     )
-
-    input_data = {
-        "actividad": ["Obras de teatro"],
-        "horarios": ["15:00"],
-        "ubicacion": "Monterrey, Nuevo Leon",
-        "solicitudes_especiales": [],
-        "precio": 1000,
-        "dias": "09-01-2025"
-    }
-
+    raw_data = sys.stdin.read()
+    input_data = json.loads(raw_data)
     scraper = DynamicEventScraper(config)
     resultados = scraper.scraping_completo(input_data)
 
-    print(f"\n{'='*60}")
-    print(f"RESULTADOS FINALES - {len(resultados)} EVENTOS ENCONTRADOS")
-    print(f"{'='*60}")
+    request_id = supabase.table("requests").select("id").order("id", desc=True).limit(1).execute()
 
-    for i, resultado in enumerate(resultados, 1):
-        print(f"\n🎭 EVENTO {i}")
-        print(f"{'─'*40}")
-        for key, value in resultado.items():
-            print(f"{key.replace('_', ' ').title()}: {value}")
+    response = (
+      supabase.table("activities")
+      .insert([{"json": r, "request_id": request_id.data[0]['id'] if request_id.data else None} for r in resultados])
+      .execute()
+    )
 
-    return resultados
-
-if __name__ == "__main__":
-    main()
+main()
