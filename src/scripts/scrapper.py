@@ -31,7 +31,6 @@ KEYWORDS = ["cartelera", "agenda", "eventos", "programacion", "actividades"]
 input = {
   "actividad":["Visita a museo", "Obras de teatro"], # Scrapper
   "horarios":["15:00"], # Sys
-  "num_personas":4, # Sys
   "ubicacion":"Hermosillo, Sonora", # Scrapper
   "solicitudes_especiales":[], # Sys
   "precio":1000, # Sys
