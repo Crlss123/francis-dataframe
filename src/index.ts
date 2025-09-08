@@ -209,7 +209,7 @@ const francisTool = createTool<FrancisInput, FrancisConfig>({
         days: dateRange,
       };
       const weatherReports = await getWeather(weatherRequest);
-      console.log('2');
+
       const forecasts = weatherReports.map(report => ({
         json: report,
         request_id: requestId,
