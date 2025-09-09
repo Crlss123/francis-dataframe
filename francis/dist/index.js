@@ -160,7 +160,6 @@ const francisTool = (0, tools_1.createTool)({
                 days: dateRange,
             };
             const weatherReports = await (0, weather_1.default)(weatherRequest);
-            console.log('2');
             const forecasts = weatherReports.map(report => ({
                 json: report,
                 request_id: requestId,
