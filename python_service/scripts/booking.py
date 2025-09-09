@@ -1,7 +1,4 @@
-import requests
-import json, sys
-from datetime import datetime, timedelta
-import pytz
+
 from timezonefinder import TimezoneFinder
 from sentence_transformers import SentenceTransformer, util
 import os
@@ -25,6 +22,8 @@ tf = TimezoneFinder()
 model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
 
 def convert_to_local_by_latlon(iso_datetime_str, lat, lon):
+    from datetime import datetime, timedelta
+    import pytz
     try:
         dt = datetime.fromisoformat(iso_datetime_str.replace("Z", "+00:00"))
     except Exception:
@@ -35,12 +34,14 @@ def convert_to_local_by_latlon(iso_datetime_str, lat, lon):
     return dt_local.strftime("%Y-%m-%d %H:%M")
 
 def get_date_range(start_date, end_date):
+    from datetime import datetime, timedelta
     start_dt = datetime.strptime(start_date, "%Y-%m-%d")
     end_dt = datetime.strptime(end_date, "%Y-%m-%d")
     return [(start_dt + timedelta(days=i)).strftime("%Y-%m-%d")
             for i in range((end_dt - start_dt).days + 1)]
 
 def get_destination_id(city_name):
+    import requests
     url = "https://booking-com.p.rapidapi.com/v1/hotels/locations"
     params = {"name": city_name, "locale": "en-gb"}
     res = requests.get(url, headers=headers, params=params).json()
@@ -56,6 +57,7 @@ def get_destination_id(city_name):
     return loc.get("dest_id") or loc.get("id"), loc.get("cc1") or loc.get("country_code")
 
 def search_attractions(dest_id, cc1, start_date, end_date, limit=10):
+    import requests
     url = f"{BASE_URL}/search"
     params = {
         "start_date": start_date,
@@ -87,6 +89,7 @@ def search_attractions(dest_id, cc1, start_date, end_date, limit=10):
     return results
 
 def get_attraction_details(slug):
+    import requests
     if not slug:
         return {}
     url = f"{BASE_URL}/details"
@@ -94,6 +97,7 @@ def get_attraction_details(slug):
     return requests.get(url, headers=headers, params=params).json()
 
 def get_availability(attraction_id, date):
+    import requests
     url = f"{BASE_URL}/availability"
     params = {"date": date, "currency": "USD", "locale": "en-gb", "attraction_id": attraction_id}
     return requests.get(url, headers=headers, params=params).json()

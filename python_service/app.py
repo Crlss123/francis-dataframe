@@ -1,10 +1,14 @@
+import os
+import sys
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from fastapi import FastAPI, Response
 from pydantic import BaseModel
-from scripts.booking import search_activities
-from scripts.scrapper import scraper
-import os
+from scripts import scraper, search_activities
 from dotenv import load_dotenv
 from supabase import create_client, Client
+
 
 load_dotenv()
 
@@ -24,6 +28,11 @@ class InputData(BaseModel):
     category: list[str]
     hotel: str
     request_id: int
+
+
+@app.get("/")
+def read_root():
+    return "hello world"
 
 
 @app.post("/booking", status_code=200)
