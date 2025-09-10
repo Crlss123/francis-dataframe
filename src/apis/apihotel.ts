@@ -77,3 +77,14 @@ async function searchHotels(destId: string, checkin: string, checkout: string) {
   const res = await axios.get(url, { headers });
   return res.data.result || [];
 }
+
+async function getFacilities(hotelId: string): Promise<string[]> {
+  try {
+    const url = `https://${RAPID_API_HOST}/v1/hotels/facilities?locale=en-gb&hotel_id=${hotelId}`;
+    const res = await axios.get(url, { headers });
+    return res.data.map((f: any) => f.facility_name);
+  } catch {
+    return [];
+  }
+}
+
