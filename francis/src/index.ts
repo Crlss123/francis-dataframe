@@ -159,7 +159,6 @@ const francisTool = createTool<FrancisInput, FrancisConfig>({
    */
   async execute(input, config, context) {
     console.log(`Executing francis tool with execution ID: ${context.executionId}`);
-
     try {
       const requestId = await createRequest();
 
@@ -178,12 +177,15 @@ const francisTool = createTool<FrancisInput, FrancisConfig>({
       };
 
       // Fetches weather forecasts of the location in the date range
+      console.log(1);
       const weatherRequest: WeatherRequest = {
         location,
         days: dateRange,
       };
-      const weatherReports = await getWeather(weatherRequest);
 
+      console.log(weatherRequest)
+      const weatherReports = await getWeather(weatherRequest);
+      console.log(1);
       const forecasts = weatherReports.map(report => ({
         json: report,
         request_id: requestId,
@@ -192,13 +194,14 @@ const francisTool = createTool<FrancisInput, FrancisConfig>({
       createWeatherForecasts(forecasts);
 
       // Fetches booking.com data from the python service
-      const bookingData = await getBookingInfo(serviceInput);
+      // const bookingData = await getBookingInfo(serviceInput);
 
-      const scraperData = await getScraperInfo(serviceInput);
+      // const scraperData = await getScraperInfo(serviceInput);
 
       return {
         status: 'success',
         data: {
+          weather: weatherReports,
           metadata: {
             execution_id: context.executionId,
             timestamp: context.timestamp.toISOString(),
