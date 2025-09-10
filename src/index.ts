@@ -19,10 +19,9 @@ import { getBookingInfo, getScraperInfo } from './apis/python';
 import getWeather from './apis/weather';
 import { getDateRange } from './utils';
 import { WeatherRequest } from './apis/weather';
-import { createRequest, createWeatherForecasts } from './supabaseController';
+import { createHotelActivities, createRequest, createWeatherForecasts } from './supabaseController';
 import { runSystem } from './apis/sys';
-import { getHotelFacilities } from './apis/apihotel';
-
+import { getHotelFacilities } from './apis/hotel';
 
 dotenv.config();
 
@@ -178,13 +177,12 @@ const francisTool = createTool<FrancisInput, FrancisConfig>({
         request_id: requestId,
       };
 
-      // // Fetches weather forecasts of the location in the date range
+      // Fetches weather forecasts of the location in the date range
       const weatherRequest: WeatherRequest = {
         location,
         days: dateRange,
       };
 
-      console.log(weatherRequest);
       const weatherReports = await getWeather(weatherRequest);
       const forecasts = weatherReports.map(report => ({
         json: report,
@@ -197,28 +195,21 @@ const francisTool = createTool<FrancisInput, FrancisConfig>({
 
       const hotelResults = await getHotelFacilities({
         ...input,
-        hotel: input.hotel || ""
+        hotel: input.hotel || '',
       });
 
-      // console.log("Hotel facilities results:", hotelResults);
-
       if (hotelResults && hotelResults.length > 0) {
-
         const hotelRecords = hotelResults.map(hotel => ({
           json: hotel,
-          request_id: requestId
+          request_id: requestId,
         }));
-
-        const { data: hotelData, error: hotelError } = await supabase
-          .from('hotel_activities')
-          .insert(hotelRecords);
-
+        createHotelActivities(hotelRecords);
       }
 
-      // // Fetches booking.com data from the python service
-      const bookingData = await getBookingInfo(serviceInput);
+      // Fetches booking.com data from the python service
+      await getBookingInfo(serviceInput);
 
-      const scraperData = await getScraperInfo(serviceInput);
+      await getScraperInfo(serviceInput);
 
       const output = await runSystem(requestId, input);
 
@@ -278,7 +269,6 @@ async function main() {
 
     console.log(`🚀 Francis tool server started successfully`);
     console.log(`📡 Listening on port ${process.env.PORT || 3000}`);
-    console.log(`🔗 Health check: http://localhost:${process.env.PORT || 3000}/health`);
   } catch (error) {
     console.error('Failed to start tool server:', error);
     process.exit(1);

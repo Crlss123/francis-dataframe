@@ -11,6 +11,7 @@ const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 export async function runSystem(requestId: Number, originalInput: FrancisInput) {
   const activities = await getActivities(requestId);
   const weatherForecasts = await getWeather(requestId);
+  const hotelActivities = await getHotelActivities(requestId);
 
   // Validar que tenemos datos
   if (!activities || activities.length === 0) {
@@ -24,12 +25,15 @@ export async function runSystem(requestId: Number, originalInput: FrancisInput) 
   const prompt = `
 ERES UN ASISTENTE DE ITINERARIOS TURÍSTICOS. DEBES SEGUIR ESTAS REGLAS ESTRICTAMENTE:
 
-**REGLA CRÍTICA**: SOLO puedes usar las actividades exactas del JSON "ACTIVIDADES_DISPONIBLES" y el clima del JSON "PRONOSTICO_CLIMA". NO INVENTES actividades.
+**REGLA CRÍTICA**: SOLO puedes usar las actividades exactas del JSON "ACTIVIDADES_DISPONIBLES", "ACTIVIDADES DEL HOTEL EN EL QUE SE ALOJA EL USUARIO" y el clima del JSON "PRONOSTICO_CLIMA". NO INVENTES actividades.
 
 **DATOS DISPONIBLES:**
 
 ACTIVIDADES_DISPONIBLES:
 ${JSON.stringify(activities, null, 2)}
+
+ACTIVIDADES DEL HOTEL EN EL QUE SE ALOJA EL USUARIO:
+${JSON.stringify(hotelActivities, null, 2)}
 
 PRONOSTICO_CLIMA:
 ${JSON.stringify(weatherForecasts, null, 2)}

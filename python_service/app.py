@@ -46,7 +46,6 @@ def booking(body: Request, res: Response):
         "end_date": body.end_date,
         "category": body.category,
     }
-    print(data)
 
     results = search_activities(data)
 

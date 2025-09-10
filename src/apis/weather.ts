@@ -19,7 +19,7 @@ export interface DayReport {
   hours: WeatherReport[];
 }
 
-export const getWeatherSafe = async (input: WeatherRequest) => {
+export const getWeather = async (input: WeatherRequest) => {
   if (!input || typeof input !== 'object') {
     throw new Error('Invalid input: expected object with location and days');
   }
@@ -88,4 +88,4 @@ export const getWeatherSafe = async (input: WeatherRequest) => {
   return weatherReports;
 };
 
-export default getWeatherSafe;
+export default getWeather;

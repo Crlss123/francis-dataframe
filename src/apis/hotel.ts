@@ -1,4 +1,6 @@
 import axios from "axios";
+import dotenv from "dotenv";
+dotenv.config();
 
 const RAPID_API_KEY = process.env.RAPID_API_KEY || "";
 const RAPID_API_HOST = process.env.RAPID_API_HOST || "";
@@ -126,4 +128,3 @@ export async function getHotelFacilities(
 
   return results;
 }
-

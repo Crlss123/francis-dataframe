@@ -69,3 +69,11 @@ export async function getHotelActivities(request_id: Number) {
     throw error;
   }
 }
+
+export async function createHotelActivities(hotelRecords: any[]) {
+  try {
+    const { data, error } = await supabase.from('hotel_activities').insert(hotelRecords);
+  } catch (error) {
+    throw error;
+  }
+}
