@@ -59,3 +59,21 @@ function findHotelByName(hotels: any[], targetHotel: string): any | null {
 
   return null;
 }
+
+
+async function searchLocation(city: string): Promise<string> {
+  const url = `https://${RAPID_API_HOST}/v1/hotels/locations?locale=en-gb&name=${encodeURIComponent(
+    city
+  )}`;
+  const res = await axios.get(url, { headers });
+  if (!res.data || res.data.length === 0) {
+    throw new Error(`No se encontró la ciudad: ${city}`);
+  }
+  return res.data[0].dest_id;
+}
+
+async function searchHotels(destId: string, checkin: string, checkout: string) {
+  const url = `https://${RAPID_API_HOST}/v1/hotels/search?adults_number=2&page_number=0&children_number=2&include_adjacency=true&children_ages=5%2C0&locale=en-gb&dest_type=city&filter_by_currency=USD&dest_id=${destId}&order_by=popularity&units=metric&checkout_date=${checkout}&room_number=1&checkin_date=${checkin}`;
+  const res = await axios.get(url, { headers });
+  return res.data.result || [];
+}
