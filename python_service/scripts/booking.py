@@ -16,7 +16,6 @@ tf = TimezoneFinder()
 model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
 
 
-# --- Convertir horario ISO 8601 a hora local segÃºn lat/lon ---
 def convert_to_local_by_latlon(iso_datetime_str, lat, lon):
     from datetime import datetime, timedelta
     import pytz
@@ -41,8 +40,6 @@ def get_date_range(start_date, end_date):
         for i in range((end_dt - start_dt).days + 1)
     ]
 
-
-# --- Obtener dest_id, cc1, lat y lon ---
 def get_destination_info(city_name):
     import requests
 
@@ -204,5 +201,3 @@ def search_activities(entrada):
         }
         for attr in attractions_filtradas
     ]
-
-
