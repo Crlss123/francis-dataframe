@@ -21,3 +21,41 @@ export interface HotelFacilitiesOutput {
   hotel_name: string;
   facilities: string[];
 }
+
+function normalizeHotelName(name: string): string {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function findHotelByName(hotels: any[], targetHotel: string): any | null {
+  const normalizedTarget = normalizeHotelName(targetHotel);
+
+  for (const hotel of hotels) {
+    const normalizedHotelName = normalizeHotelName(hotel.hotel_name);
+    if (normalizedHotelName === normalizedTarget) {
+      return hotel;
+    }
+  }
+
+  for (const hotel of hotels) {
+    const normalizedHotelName = normalizeHotelName(hotel.hotel_name);
+    if (normalizedHotelName.includes(normalizedTarget)) {
+      return hotel;
+    }
+  }
+
+  for (const hotel of hotels) {
+    const normalizedHotelName = normalizeHotelName(hotel.hotel_name);
+    if (
+      normalizedTarget.includes(normalizedHotelName) &&
+      normalizedHotelName.length > 3
+    ) {
+      return hotel;
+    }
+  }
+
+  return null;
+}
