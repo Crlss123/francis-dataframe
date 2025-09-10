@@ -1,29 +1,26 @@
-
 from timezonefinder import TimezoneFinder
 from sentence_transformers import SentenceTransformer, util
-import os
-from supabase import create_client, Client
 from dotenv import load_dotenv
+import os
 
 load_dotenv()
 
-BASE_URL = os.getenv("BASE_URL")
 
-url: str = os.getenv("SUPABASE_URL")
-key: str = os.getenv("SUPABASE_KEY")
-supabase: Client = create_client(url, key)
-
+BASE_URL = "https://booking-com.p.rapidapi.com/v1/attractions"
 headers = {
-    'x-rapidapi-key': os.getenv("RAPID_API_KEY"),
-    'x-rapidapi-host': os.getenv("RAPID_API_HOST")
+    "x-rapidapi-key": os.getenv("RAPID_API_KEY"),
+    "x-rapidapi-host": os.getenv("RAPID_API_HOST"),
 }
 
 tf = TimezoneFinder()
 model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
 
+
+# --- Convertir horario ISO 8601 a hora local segÃºn lat/lon ---
 def convert_to_local_by_latlon(iso_datetime_str, lat, lon):
     from datetime import datetime, timedelta
     import pytz
+
     try:
         dt = datetime.fromisoformat(iso_datetime_str.replace("Z", "+00:00"))
     except Exception:
@@ -33,31 +30,50 @@ def convert_to_local_by_latlon(iso_datetime_str, lat, lon):
     dt_local = dt.astimezone(local_tz)
     return dt_local.strftime("%Y-%m-%d %H:%M")
 
+
 def get_date_range(start_date, end_date):
     from datetime import datetime, timedelta
+
     start_dt = datetime.strptime(start_date, "%Y-%m-%d")
     end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-    return [(start_dt + timedelta(days=i)).strftime("%Y-%m-%d")
-            for i in range((end_dt - start_dt).days + 1)]
+    return [
+        (start_dt + timedelta(days=i)).strftime("%Y-%m-%d")
+        for i in range((end_dt - start_dt).days + 1)
+    ]
 
-def get_destination_id(city_name):
+
+# --- Obtener dest_id, cc1, lat y lon ---
+def get_destination_info(city_name):
     import requests
+
     url = "https://booking-com.p.rapidapi.com/v1/hotels/locations"
     params = {"name": city_name, "locale": "en-gb"}
     res = requests.get(url, headers=headers, params=params).json()
 
     if not res or not isinstance(res, list):
-        return None, None
+        return None
 
     for loc in res:
         if loc.get("dest_type") == "city":
-            return loc.get("dest_id") or loc.get("id"), loc.get("cc1") or loc.get("country_code")
+            return {
+                "dest_id": loc.get("dest_id") or loc.get("id"),
+                "cc1": loc.get("cc1") or loc.get("country_code"),
+                "lat": loc.get("latitude"),
+                "lon": loc.get("longitude"),
+            }
 
     loc = res[0]
-    return loc.get("dest_id") or loc.get("id"), loc.get("cc1") or loc.get("country_code")
+    return {
+        "dest_id": loc.get("dest_id") or loc.get("id"),
+        "cc1": loc.get("cc1") or loc.get("country_code"),
+        "lat": loc.get("latitude"),
+        "lon": loc.get("longitude"),
+    }
+
 
 def search_attractions(dest_id, cc1, start_date, end_date, limit=10):
     import requests
+
     url = f"{BASE_URL}/search"
     params = {
         "start_date": start_date,
@@ -66,7 +82,7 @@ def search_attractions(dest_id, cc1, start_date, end_date, limit=10):
         "currency": "USD",
         "dest_id": dest_id,
         "order_by": "attr_book_score",
-        "page_number": 0
+        "page_number": 0,
     }
     res = requests.get(url, headers=headers, params=params).json()
 
@@ -74,36 +90,56 @@ def search_attractions(dest_id, cc1, start_date, end_date, limit=10):
     results = []
     for product in products[:limit]:
         slug = product.get("slug")
-        results.append({
-            "id": product.get("id"),
-            "url": f"https://www.booking.com/attractions/{cc1}/{slug}.html" if slug else None,
-            "actividad": product.get("name"),
-            "descripcion": product.get("shortDescription"),
-            "precio": product.get("representativePrice", {}).get("chargeAmount"),
-            "rating": (product.get("reviewsStats") or {}).get("combinedNumericStats", {}).get("average"),
-            "slug": slug,
-            "horarios": [],
-            "dias": [],
-            "num_personas": None
-        })
+        results.append(
+            {
+                "id": product.get("id"),
+                "url": (
+                    f"https://www.booking.com/attractions/{cc1}/{slug}.html"
+                    if slug
+                    else None
+                ),
+                "actividad": product.get("name"),
+                "descripcion": product.get("shortDescription"),
+                "precio": product.get("representativePrice", {}).get("chargeAmount"),
+                "rating": (product.get("reviewsStats") or {})
+                .get("combinedNumericStats", {})
+                .get("average"),
+                "slug": slug,
+                "horarios": [],
+                "dias": [],
+                "num_personas": None,
+            }
+        )
     return results
+
 
 def get_attraction_details(slug):
     import requests
+
     if not slug:
         return {}
     url = f"{BASE_URL}/details"
     params = {"slug": slug, "locale": "en-gb", "currency": "USD"}
     return requests.get(url, headers=headers, params=params).json()
 
+
 def get_availability(attraction_id, date):
     import requests
+
     url = f"{BASE_URL}/availability"
-    params = {"date": date, "currency": "USD", "locale": "en-gb", "attraction_id": attraction_id}
+    params = {
+        "date": date,
+        "currency": "USD",
+        "locale": "en-gb",
+        "attraction_id": attraction_id,
+    }
     return requests.get(url, headers=headers, params=params).json()
 
-def filtrar_por_categoria(attractions, categoria, umbral=0.25):
-    embedding_categoria = model.encode(categoria, convert_to_tensor=True)
+
+def filtrar_por_categoria(attractions, categorias, umbral=0.25):
+    embeddings_categorias = [
+        model.encode(cat, convert_to_tensor=True) for cat in categorias
+    ]
     filtradas = []
     for attr in attractions:
         slug = attr.get("slug")
@@ -112,20 +148,30 @@ def filtrar_por_categoria(attractions, categoria, umbral=0.25):
         if not texto.strip():
             continue
         embedding_texto = model.encode(texto, convert_to_tensor=True)
-        similitud = util.pytorch_cos_sim(embedding_categoria, embedding_texto).item()
-        if similitud >= umbral:
-            filtradas.append(attr)
+        for emb_cat in embeddings_categorias:
+            similitud = util.pytorch_cos_sim(emb_cat, embedding_texto).item()
+            if similitud >= umbral:
+                filtradas.append(attr)
+                break
     return filtradas
+
 
 def search_activities(entrada):
     city = entrada["city"]
     start_date = entrada["start_date"]
     end_date = entrada["end_date"]
-    category = entrada["category"]
+    categorias = entrada["category"]
 
-    dest_id, cc1 = get_destination_id(city)
-    if not dest_id:
+    dest_info = get_destination_info(city)
+    if not dest_info:
         return []
+
+    dest_id, cc1, lat, lon = (
+        dest_info["dest_id"],
+        dest_info["cc1"],
+        dest_info["lat"],
+        dest_info["lon"],
+    )
 
     attractions = search_attractions(dest_id, cc1, start_date, end_date)
     fechas = get_date_range(start_date, end_date)
@@ -137,11 +183,13 @@ def search_activities(entrada):
             for slot in availability if isinstance(availability, list) else []:
                 start_time = slot.get("start")
                 if start_time:
-                    all_horarios.append(start_time)
+                    all_horarios.append(
+                        convert_to_local_by_latlon(start_time, lat, lon)
+                    )
         attr["horarios"] = all_horarios
         attr["dias"] = fechas
 
-    attractions_filtradas = filtrar_por_categoria(attractions, category, umbral=0.25)
+    attractions_filtradas = filtrar_por_categoria(attractions, categorias, umbral=0.25)
 
     return [
         {
@@ -152,7 +200,9 @@ def search_activities(entrada):
             "precio": attr["precio"],
             "num_personas": attr["num_personas"],
             "descripcion": attr["descripcion"],
-            "rating": attr["rating"]
+            "rating": attr["rating"],
         }
         for attr in attractions_filtradas
     ]
+
+

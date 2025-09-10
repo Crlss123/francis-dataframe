@@ -43,8 +43,10 @@
   "license": "MIT",
   "dependencies": {
     "@ai-spine/tools": "^1.0.0",
+    "@google/genai": "^1.18.0",
     "@supabase/supabase-js": "^2.57.2",
-    "dotenv": "^16.3.1"
+    "axios": "^1.11.0",
+    "dotenv": "^16.6.1"
   },
   "devDependencies": {
     "@types/dotenv": "^8.2.0",

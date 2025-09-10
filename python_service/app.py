@@ -19,16 +19,14 @@ URL = os.getenv("SUPABASE_URL")
 KEY = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(URL, KEY)
 
-
-class InputData(BaseModel):
+class Request(BaseModel):
     city: str
     start_date: str
     end_date: str
-    price: float
     category: list[str]
+    price: int
     hotel: str
     request_id: int
-
 
 @app.get("/")
 def read_root():
@@ -36,29 +34,29 @@ def read_root():
 
 
 @app.post("/booking", status_code=200)
-def booking(data: InputData, res: Response):
-    if not data:
+def booking(body: Request, res: Response):
+    if not body:
         res.status_code = 400
         return {"status": "error", "message": "No input data provided"}
 
-    request_id = data.request_id
+    request_id = body.request_id
     data = {
-        "city": data.city,
-        "start_date": data.start_date,
-        "end_date": data.end_date,
-        "price": data.price,
-        "category": data.category,
-        "hotel": data.hotel,
+        "city": body.city,
+        "start_date": body.start_date,
+        "end_date": body.end_date,
+        "category": body.category,
     }
+    print(data)
 
     results = search_activities(data)
+
     response = (
         supabase.table("activities")
         .insert(
             [
                 {
                     "json": r,
-                    "request_id": request_id.data[0]["id"] if request_id.data else None,
+                    "request_id": request_id,
                 }
                 for r in results
             ]
@@ -69,34 +67,36 @@ def booking(data: InputData, res: Response):
     return {
         "status": "success",
         "message": "Activities saved successfully from Booking.com API",
+        "payload": results
     }
 
 
-@app.post("/scrapping", status_code=200)
-def scrapping(data: InputData, res: Response):
+@app.post("/scraping", status_code=200)
+def scrapping(body: Request, res: Response):
 
-    if not data:
+    if not body:
         res.status_code = 400
         return {"status": "error", "message": "No input data provided"}
 
-    request_id = data.request_id
+    request_id = body.request_id
     data = {
-        "city": data.city,
-        "start_date": data.start_date,
-        "end_date": data.end_date,
-        "price": data.price,
-        "category": data.category,
-        "hotel": data.hotel,
+        "city": body.city,
+        "start_date": body.start_date,
+        "end_date": body.end_date,
+        "price": body.price,
+        "category": body.category,
     }
+    print(data)
     results = scraper.scraping_completo(data)
-
+    for r in results:
+        print(r)
     response = (
         supabase.table("activities")
         .insert(
             [
                 {
                     "json": r,
-                    "request_id": request_id.data[0]["id"] if request_id.data else None,
+                    "request_id": request_id,
                 }
                 for r in results
             ]

@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 _genai_client = None
 _requests_session = None
-_supabase_client = None
 
 class Actividad(BaseModel):
     url: str
@@ -54,16 +53,6 @@ def get_requests_session():
         })
         logger.info("Requests session loaded")
     return _requests_session
-
-def get_supabase_client():
-    global _supabase_client
-    if _supabase_client is None:
-        from supabase import create_client
-        url = os.getenv("SUPABASE_URL")
-        key = os.getenv("SUPABASE_KEY")
-        _supabase_client = create_client(url, key)
-        logger.info("Supabase client loaded")
-    return _supabase_client
 
 def lazy_search_google(query, num=8, pause=2.0):
     from googlesearch import search

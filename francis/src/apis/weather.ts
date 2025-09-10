@@ -1,4 +1,5 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+dotenv.config();
 
 const BASE_URL = 'http://api.weatherapi.com/v1';
 
@@ -13,7 +14,7 @@ interface WeatherReport {
   condition: string;
 }
 
-interface DayReport {
+export interface DayReport {
   date: string;
   hours: WeatherReport[];
 }
@@ -34,14 +35,16 @@ const getWeather = async (input: WeatherRequest) => {
       const data: any = await response.json();
       const dayReport: DayReport = {
         date: day,
-        hours: []
+        hours: [],
       };
-      const forecast = data.forecast.forecastday[0].hour;
-      forecast.map((hour:any) => {
+      
+      const forecast = data.forecast.forecastday[0].hours ?? [];
+
+      forecast.forEach((hour: any) => {
         dayReport.hours.push({
           dateAndHour: hour.time,
           temperatureCelsius: `${hour.temp_c}°C`,
-          condition: hour.condition.text
+          condition: hour.condition.text,
         });
       });
       weatherReports.push(dayReport);
