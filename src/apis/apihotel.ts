@@ -88,3 +88,42 @@ async function getFacilities(hotelId: string): Promise<string[]> {
   }
 }
 
+
+export async function getHotelFacilities(
+  input: FrancisInput
+): Promise<HotelFacilitiesOutput[]> {
+  const destId = await searchLocation(input.city);
+  const hotels = await searchHotels(destId, input.start_date, input.end_date);
+
+  if (!hotels || hotels.length === 0) {
+    throw new Error(
+      "No se encontraron hoteles para la ciudad y fechas especificadas."
+    );
+  }
+
+  const foundHotel = findHotelByName(hotels, input.hotel);
+
+  if (foundHotel) {
+    const facilities = await getFacilities(foundHotel.hotel_id.toString());
+    return [
+      {
+        hotel_name: foundHotel.hotel_name,
+        facilities,
+      },
+    ];
+  }
+
+  const topHotels = hotels.slice(0, 1);
+  const results: HotelFacilitiesOutput[] = [];
+
+  for (const hotel of topHotels) {
+    const facilities = await getFacilities(hotel.hotel_id.toString());
+    results.push({
+      hotel_name: hotel.hotel_name,
+      facilities,
+    });
+  }
+
+  return results;
+}
+
