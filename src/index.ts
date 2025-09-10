@@ -21,6 +21,8 @@ import { getDateRange } from './utils';
 import { WeatherRequest } from './apis/weather';
 import { createRequest, createWeatherForecasts } from './supabaseController';
 import { runSystem } from './apis/sys';
+import { getHotelFacilities } from './apis/apihotel';
+
 
 dotenv.config();
 
@@ -190,6 +192,28 @@ const francisTool = createTool<FrancisInput, FrancisConfig>({
       }));
 
       createWeatherForecasts(forecasts);
+
+      // Fetches hotel facilities
+
+      const hotelResults = await getHotelFacilities({
+        ...input,
+        hotel: input.hotel || ""
+      });
+
+      // console.log("Hotel facilities results:", hotelResults);
+
+      if (hotelResults && hotelResults.length > 0) {
+
+        const hotelRecords = hotelResults.map(hotel => ({
+          json: hotel,
+          request_id: requestId
+        }));
+
+        const { data: hotelData, error: hotelError } = await supabase
+          .from('hotel_activities')
+          .insert(hotelRecords);
+
+      }
 
       // // Fetches booking.com data from the python service
       const bookingData = await getBookingInfo(serviceInput);
