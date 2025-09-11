@@ -1,250 +1,233 @@
+import dotenv from 'dotenv';
+dotenv.config();
 import request from 'supertest';
-import francisTool from '../src/index';
+import { testTool, testToolHealth, testToolDirect } from '@ai-spine/tools-testing';
+import {
+  createTool,
+  stringField,
+  numberField,
+  booleanField,
+  apiKeyField,
+  arrayField,
+} from '@ai-spine/tools';
+
+import { getBookingInfo, getScraperInfo } from '../src/apis/python';
+import getWeather, { WeatherRequest } from '../src/apis/weather';
+import { getDateRange } from '../src/utils';
+import {
+  createHotelActivities,
+  createRequest,
+  createWeatherForecasts,
+} from '../src/supabaseController';
+import { runSystem } from '../src/apis/sys';
+import { getHotelFacilities } from '../src/apis/hotel';
+import francisTool, { FrancisInput, FrancisConfig } from '../src';
 
 describe('Francis Tool', () => {
-  let app: any;
+  let tool: any;
 
-  beforeAll(async () => {
-    app = francisTool.getApp();
-  });
+  // beforeEach(async () => {
+  //   tool = francisTool;
+  // });
 
-  afterAll(async () => {
-    await francisTool.stop();
-  });
-
-  describe('Health Check', () => {
-    it('should return healthy status', async () => {
-      const response = await request(app)
-        .get('/health')
-        .expect(200);
-
-      expect(response.body).toMatchObject({
-        status: 'healthy',
+  beforeEach(async () => {
+    tool = createTool<FrancisInput, FrancisConfig>({
+      metadata: {
+        name: 'francis',
         version: '1.0.0',
-        tool_metadata: {
-          name: 'francis',
-          description: expect.any(String),
-          capabilities: expect.any(Array),
+        description: 'Tool used to obtain a experiences itinerary based on user input and filters.',
+        capabilities: ['text-processing'],
+        author: 'Your Name',
+        license: 'MIT',
+      },
+      schema: {
+        input: {
+          city: stringField({
+            required: true,
+            description: 'The city to search for activities',
+            minLength: 1,
+            maxLength: 100,
+          }),
+          start_date: stringField({
+            required: true,
+            description: 'The start date for the activity search',
+            minLength: 10,
+            maxLength: 10,
+          }),
+          end_date: stringField({
+            required: true,
+            description: 'The end date for the activity search',
+            minLength: 10,
+            maxLength: 10,
+          }),
+          category: arrayField(
+            stringField({
+              required: true,
+              description: 'The category of activities to search for',
+              minLength: 1,
+              maxLength: 100,
+            })
+          ),
+          price: numberField({
+            required: true,
+            description: 'The price range for activities to search for',
+            min: 0,
+            max: 10000,
+          }),
+          hotel: stringField({
+            required: true,
+            description: 'The hotel where the user will be staying',
+            minLength: 1,
+            maxLength: 100,
+          }),
         },
-        uptime_seconds: expect.any(Number),
-      });
+        config: {
+          api_key: apiKeyField({
+            required: false,
+            description: 'Optional API key for external services',
+          }),
+        },
+      },
+      async execute(input, config, context) {
+        console.log(`Executing francis tool with execution ID: ${context.executionId}`);
+        try {
+          const requestId = await createRequest();
+
+          const startDate = input.start_date;
+          const endDate = input.end_date;
+          const location = input.city;
+          const dateRange = getDateRange(startDate, endDate);
+          const serviceInput = {
+            city: input.city,
+            start_date: input.start_date,
+            end_date: input.end_date,
+            category: input.category,
+            price: input.price,
+            hotel: input.hotel,
+            request_id: requestId,
+          };
+
+          // Fetches weather forecasts of the location in the date range
+          const weatherRequest: WeatherRequest = {
+            location,
+            days: dateRange,
+          };
+
+          const weatherReports = await getWeather(weatherRequest);
+          const forecasts = weatherReports.map(report => ({
+            json: report,
+            request_id: requestId,
+          }));
+
+          createWeatherForecasts(forecasts);
+
+          // Fetches hotel facilities
+
+          const hotelResults = await getHotelFacilities({
+            ...input,
+            hotel: input.hotel || '',
+          });
+
+          if (hotelResults && hotelResults.length > 0) {
+            const hotelRecords = hotelResults.map(hotel => ({
+              json: hotel,
+              request_id: requestId,
+            }));
+            createHotelActivities(hotelRecords);
+          }
+
+          // Fetches booking.com data from the python service
+          await getBookingInfo(serviceInput);
+
+          await getScraperInfo(serviceInput);
+
+          const output = await runSystem(requestId, input);
+
+          return {
+            status: 'success',
+            data: {
+              output: output,
+              metadata: {
+                execution_id: context.executionId,
+                timestamp: context.timestamp.toISOString(),
+                tool_version: '1.0.0',
+              },
+            },
+          };
+        } catch (error) {
+          console.error('Error processing message:', error);
+          // Always provide meaningful error messages to help users troubleshoot issues
+          throw new Error(
+            `Failed to process message: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+      },
     });
   });
 
-  describe('Tool Execution', () => {
-    it('should execute successfully with valid input', async () => {
-      const input = {
-        input_data: {
-          message: 'Hello, World!',
-          count: 2,
-          uppercase: true,
-        },
-      };
+  it('should check for the healthy status', async () => {
+    const response = await testToolHealth(tool);
+    // const response = await request('localhost:3000').get('/health').expect(200);
+    expect(response.status).toBe('healthy');
+  });
 
-      const response = await request(app)
-        .post('/execute')
-        .send(input)
-        .expect(200);
-
-      expect(response.body).toMatchObject({
-        execution_id: expect.any(String),
-        status: 'success',
-        output_data: {
-          processed_message: 'HELLO, WORLD! HELLO, WORLD!',
-          original_message: 'Hello, World!',
-          transformations: {
-            uppercase: true,
-            count: 2,
-          },
-        },
-        execution_time_ms: expect.any(Number),
-        timestamp: expect.any(String),
-      });
+  it('should check for the correct execution of the tool', async () => {
+    const response = await testToolDirect(tool, {
+      input: {
+        city: 'Cancun',
+        start_date: '2025-09-10',
+        end_date: '2025-09-12',
+        category: ['Deportes', 'Parques'],
+        price: 1000,
+        hotel: 'The Westin Resort & Spa Cancun',
+      },
+      config: {},
     });
 
-    it('should handle missing required fields', async () => {
-      const input = {
-        input_data: {
-          // Missing required 'message' field
-          count: 1,
-        },
-      };
+    expect(response.success).toBe(true);
+    // const response = await request('localhost:3000').post('/api/execute').send(input).expect(200);
 
-      const response = await request(app)
-        .post('/execute')
-        .send(input)
-        .expect(400);
+    // expect(response.body).toMatchObject({
+    //   status: 'success',
+    //   output_data: {
+    //     output: expect.any(Array),
+    //     metadata: {
+    //       execution_id: expect.any(String),
+    //       tool_version: '1.0.0',
+    //       timestamp: expect.any(String),
+    //     },
+    //   },
+    // });
+  });
 
-      expect(response.body).toMatchObject({
-        status: 'error',
-        error_code: 'VALIDATION_ERROR',
-        error_message: expect.stringContaining('Required field'),
-      });
-    });
+  it('should handle server errors', async () => {
+    const input = {
+      input_data: {
+        city: 'Cancun',
+        start_date: '2025-09-10',
+        end_date: '2025-09-12',
+        category: ['Deportes', 'Parques'],
+        price: 1000,
+        hotel: 'The Westin Resort & Spa Cancun',
+      },
+    };
 
-    it('should handle invalid input types', async () => {
-      const input = {
-        input_data: {
-          message: 'Hello',
-          count: 'invalid', // Should be a number
-        },
-      };
-
-      const response = await request(app)
-        .post('/execute')
-        .send(input)
-        .expect(400);
-
-      expect(response.body).toMatchObject({
-        status: 'error',
-        error_code: 'VALIDATION_ERROR',
-        error_message: expect.stringContaining('must be of type number'),
-      });
-    });
-
-    it('should respect field constraints', async () => {
-      const input = {
-        input_data: {
-          message: 'Hello',
-          count: 15, // Exceeds max value of 10
-        },
-      };
-
-      const response = await request(app)
-        .post('/execute')
-        .send(input)
-        .expect(400);
-
-      expect(response.body).toMatchObject({
-        status: 'error',
-        error_code: 'VALIDATION_ERROR',
-        error_message: expect.stringContaining('must be at most 10'),
-      });
-    });
-
-    it('should use default values when fields are omitted', async () => {
-      const input = {
-        input_data: {
-          message: 'Hello',
-          // count and uppercase will use defaults
-        },
-      };
-
-      const response = await request(app)
-        .post('/execute')
-        .send(input)
-        .expect(200);
-
-      expect(response.body.output_data).toMatchObject({
-        processed_message: 'Hello',
-        transformations: {
-          uppercase: false, // default value
-          count: 1, // default value
-        },
-      });
-    });
-
-    it('should handle empty message gracefully', async () => {
-      const input = {
-        input_data: {
-          message: '',
-        },
-      };
-
-      const response = await request(app)
-        .post('/execute')
-        .send(input)
-        .expect(400);
-
-      expect(response.body).toMatchObject({
-        status: 'error',
-        error_code: 'VALIDATION_ERROR',
-        error_message: expect.stringContaining('must be at least 1 characters'),
-      });
-    });
-
-    it('should handle very long messages', async () => {
-      const longMessage = 'A'.repeat(1001); // Exceeds maxLength of 1000
-      const input = {
-        input_data: {
-          message: longMessage,
-        },
-      };
-
-      const response = await request(app)
-        .post('/execute')
-        .send(input)
-        .expect(400);
-
-      expect(response.body).toMatchObject({
-        status: 'error',
-        error_code: 'VALIDATION_ERROR',
-        error_message: expect.stringContaining('must be at most 1000 characters'),
-      });
+    const response = await request('localhost:3000').post('/api/execute').send(input).expect(500);
+    expect(response.body).toMatchObject({
+      status: 'error',
+      error_message: expect.any(String),
+      error_code: expect.any(String),
     });
   });
 
-  describe('Error Handling', () => {
-    it('should handle malformed JSON', async () => {
-      const response = await request(app)
-        .post('/execute')
-        .send('invalid json')
-        .expect(400);
+  it('should handle missing required fields', async () => {
+    const input = {
+      input_data: {
+        city: 'Cancun',
+      },
+    };
 
-      expect(response.body).toMatchObject({
-        status: 'error',
-        error_code: expect.any(String),
-        error_message: expect.any(String),
-      });
-    });
-
-    it('should handle missing request body', async () => {
-      const response = await request(app)
-        .post('/execute')
-        .expect(400);
-
-      expect(response.body).toMatchObject({
-        status: 'error',
-        error_code: 'VALIDATION_ERROR',
-        error_message: expect.stringContaining('Request body must be a valid JSON object'),
-      });
-    });
-  });
-
-  describe('Statistics and Metadata', () => {
-    it('should track execution statistics', () => {
-      const stats = francisTool.getStats();
-      
-      expect(stats).toMatchObject({
-        executionCount: expect.any(Number),
-        errorCount: expect.any(Number),
-        avgExecutionTime: expect.any(Number),
-        errorRate: expect.any(Number),
-        uptime: expect.any(Number),
-      });
-    });
-
-    it('should include metadata in responses', async () => {
-      const input = {
-        input_data: {
-          message: 'Test',
-        },
-        metadata: {
-          user_id: 'test-user',
-          custom_field: 'custom_value',
-        },
-      };
-
-      const response = await request(app)
-        .post('/execute')
-        .send(input)
-        .expect(200);
-
-      expect(response.body.output_data.metadata).toMatchObject({
-        execution_id: expect.any(String),
-        timestamp: expect.any(String),
-        tool_version: '1.0.0',
-      });
-    });
+    const response = await request('localhost:3000').post('/api/execute').send(input).expect(400);
+    expect(response.body.status).toBe('error');
   });
 });

@@ -1,30 +1,18 @@
-import requests
-import time
-import json
 import os
-from urllib.parse import urljoin, urlparse, quote
-from bs4 import BeautifulSoup
-from markdownify import markdownify
-from dataclasses import dataclass
 from typing import List, Dict, Optional, Set
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import re
-from googlesearch import search
-from google import genai
+from dataclasses import dataclass
 from pydantic import BaseModel
 from dotenv import load_dotenv
-import sys
-from supabase import create_client, Client
 
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-url: str = os.getenv("SUPABASE_URL")
-key: str = os.getenv("SUPABASE_KEY")
-supabase: Client = create_client(url, key)
+
+_genai_client = None
+_requests_session = None
 
 class Actividad(BaseModel):
     url: str
@@ -43,12 +31,45 @@ class ScrapingConfig:
     max_urls_per_activity: int = 8
     gemini_model: str = "gemini-1.5-flash"
 
+def get_genai_client():
+    global _genai_client
+    if _genai_client is None:
+        from google import genai
+        _genai_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        logger.info("Google GenAI client loaded")
+    return _genai_client
+
+def get_requests_session():
+    global _requests_session
+    if _requests_session is None:
+        import requests
+        _requests_session = requests.Session()
+        _requests_session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+        })
+        logger.info("Requests session loaded")
+    return _requests_session
+
+def lazy_search_google(query, num=8, pause=2.0):
+    from googlesearch import search
+    import time
+    return search(query, num=num, stop=num, pause=pause, lang='es')
+
+def lazy_parse_html(content):
+    from bs4 import BeautifulSoup
+    return BeautifulSoup(content, 'html.parser')
+
+def lazy_markdownify(html_content, heading_style="ATX"):
+    from markdownify import markdownify
+    return markdownify(html_content, heading_style=heading_style)
+
 class DynamicEventScraper:
     def __init__(self, config: ScrapingConfig = None):
-        load_dotenv()
         self.config = config or ScrapingConfig()
-        self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-        self.session = self._create_session()
         self.processed_urls: Set[str] = set()
 
         self.api_endpoints = {
@@ -66,17 +87,7 @@ class DynamicEventScraper:
             "gastronomia": ["food", "restaurant", "gastronomia", "culinary", "cooking"],
             "general": ["events", "eventos", "activities", "actividades", "things to do"]
         }
-
-    def _create_session(self) -> requests.Session:
-        session = requests.Session()
-        session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive',
-        })
-        return session
+        logger.info("DynamicEventScraper initialized (lazy loading enabled)")
 
     def detectar_tipo_actividad(self, actividad: str) -> List[str]:
         actividad_lower = actividad.lower()
@@ -122,6 +133,8 @@ class DynamicEventScraper:
         return queries
 
     def buscar_urls_con_google(self, actividad: str, ciudad: str) -> List[str]:
+        import time
+
         urls_encontradas = set()
         queries = self.generar_queries_busqueda(actividad, ciudad)
 
@@ -130,12 +143,10 @@ class DynamicEventScraper:
         for i, query in enumerate(queries):
             try:
                 logger.info(f"Búsqueda {i+1}: {query}")
-                resultados = search(
+                resultados = lazy_search_google(
                     query,
                     num=self.config.max_urls_per_activity,
-                    stop=self.config.max_urls_per_activity,
-                    pause=2.0,
-                    lang='es'
+                    pause=2.0
                 )
 
                 for url in resultados:
@@ -152,6 +163,8 @@ class DynamicEventScraper:
         return list(urls_encontradas)
 
     def _es_url_valida(self, url: str) -> bool:
+        from urllib.parse import urlparse
+
         try:
             parsed = urlparse(url)
             if not parsed.scheme or not parsed.netloc:
@@ -202,10 +215,11 @@ class DynamicEventScraper:
 
         try:
             logger.info(f"Extrayendo contenido de: {url}")
-            response = self.session.get(url, timeout=self.config.timeout)
+            session = get_requests_session()
+            response = session.get(url, timeout=self.config.timeout)
             response.raise_for_status()
 
-            soup = BeautifulSoup(response.content, 'html.parser')
+            soup = lazy_parse_html(response.content)
 
             contenido_estructurado = self._extraer_json_ld(soup)
             if contenido_estructurado:
@@ -225,7 +239,9 @@ class DynamicEventScraper:
             logger.warning(f"Error extrayendo contenido de {url}: {e}")
             return None
 
-    def _extraer_json_ld(self, soup: BeautifulSoup) -> Optional[str]:
+    def _extraer_json_ld(self, soup) -> Optional[str]:
+        import json
+
         scripts = soup.find_all('script', {'type': 'application/ld+json'})
         eventos_estructurados = []
 
@@ -292,7 +308,9 @@ class DynamicEventScraper:
 
         return contenido
 
-    def _extraer_microdata(self, soup: BeautifulSoup) -> Optional[str]:
+    def _extraer_microdata(self, soup) -> Optional[str]:
+        import re
+
         elementos_evento = soup.find_all(attrs={"itemtype": re.compile(r".*Event")})
         if not elementos_evento:
             return None
@@ -316,7 +334,7 @@ class DynamicEventScraper:
 
         return contenido if len(contenido) > 50 else None
 
-    def _extraer_contenido_eventos_avanzado(self, soup: BeautifulSoup) -> Optional[str]:
+    def _extraer_contenido_eventos_avanzado(self, soup) -> Optional[str]:
         for elemento in soup(['script', 'style', 'nav', 'footer', 'aside', 'header']):
             elemento.decompose()
 
@@ -339,7 +357,7 @@ class DynamicEventScraper:
 
         if contenido_eventos:
             html_combinado = '\n'.join(contenido_eventos[:5])  # Limitar a 5 elementos
-            return markdownify(html_combinado, heading_style="ATX")
+            return lazy_markdownify(html_combinado, heading_style="ATX")
 
         return None
 
@@ -358,7 +376,8 @@ class DynamicEventScraper:
         coincidencias = sum(1 for palabra in palabras_evento if palabra in texto_lower)
         return coincidencias >= 2
 
-    def _extraer_contenido_general_filtrado(self, soup: BeautifulSoup) -> str:
+    def _extraer_contenido_general_filtrado(self, soup) -> str:
+        import re  # Lightweight import
 
         contenido_principal = soup.find('main') or soup.find('article') or soup.find('div', class_=re.compile(r'content|main'))
 
@@ -369,9 +388,9 @@ class DynamicEventScraper:
             for elemento in contenido_principal(['script', 'style', 'nav', 'footer', 'aside']):
                 elemento.decompose()
 
-            return markdownify(str(contenido_principal), heading_style="ATX")
+            return lazy_markdownify(str(contenido_principal), heading_style="ATX")
 
-        return markdownify(str(soup), heading_style="ATX")
+        return lazy_markdownify(str(soup), heading_style="ATX")
 
     def procesar_contenido_con_ia(self, contenido: str, url: str) -> Optional[Actividad]:
         try:
@@ -400,7 +419,8 @@ class DynamicEventScraper:
             {contenido_limitado}
             """
 
-            response = self.client.models.generate_content(
+            client = get_genai_client()
+            response = client.models.generate_content(
                 model=self.config.gemini_model,
                 contents=prompt,
                 config={
@@ -423,6 +443,8 @@ class DynamicEventScraper:
             return None
 
     def scraping_completo(self, input_data: Dict) -> List[Dict]:
+        import time
+
         logger.info(f"=== INICIANDO SCRAPING DINÁMICO ===")
         logger.info(f"Ubicación: {input_data['city']}")
         logger.info(f"Actividades: {input_data['category']}")
@@ -476,6 +498,9 @@ class DynamicEventScraper:
         return resultados
 
     def _buscar_urls_alternativo(self, input_data: Dict) -> Set[str]:
+        from urllib.parse import urljoin  # Lightweight import
+        import time
+
         urls = set()
         ciudad = input_data["city"].split(',')[0].strip()
 
@@ -487,8 +512,9 @@ class DynamicEventScraper:
 
         for url_base in urls_base:
             try:
-                response = self.session.get(url_base, timeout=self.config.timeout)
-                soup = BeautifulSoup(response.content, 'html.parser')
+                session = get_requests_session()
+                response = session.get(url_base, timeout=self.config.timeout)
+                soup = lazy_parse_html(response.content)
 
                 enlaces = soup.find_all('a', href=True)
                 for enlace in enlaces:
@@ -517,7 +543,6 @@ class DynamicEventScraper:
         urls = set()
         ciudad_lower = ciudad.lower()
 
-
         patrones_url = [
             f"https://www.tripadvisor.com/Attractions-g150765/Activities-{ciudad}.html",
             f"https://www.timeout.com/{ciudad_lower}/things-to-do",
@@ -538,25 +563,12 @@ class DynamicEventScraper:
 
         return urls
 
-def main():
-    config = ScrapingConfig(
-        max_workers=2,
-        request_delay=2,
-        timeout=15,
-        max_urls_per_activity=6,
-        gemini_model="gemini-1.5-flash"
-    )
-    raw_data = sys.stdin.read()
-    input_data = json.loads(raw_data)
-    scraper = DynamicEventScraper(config)
-    resultados = scraper.scraping_completo(input_data)
 
-    request_id = supabase.table("requests").select("id").order("id", desc=True).limit(1).execute()
-
-    response = (
-      supabase.table("activities")
-      .insert([{"json": r, "request_id": request_id.data[0]['id'] if request_id.data else None} for r in resultados])
-      .execute()
-    )
-
-main()
+config = ScrapingConfig(
+    max_workers=2,
+    request_delay=2,
+    timeout=15,
+    max_urls_per_activity=6,
+    gemini_model="gemini-1.5-flash"
+)
+scraper = DynamicEventScraper(config)

@@ -42,11 +42,10 @@ global.testUtils = {
 
 // Type definitions for global test utilities
 declare global {
-  namespace globalThis {
     var testUtils: {
       createValidInput: (overrides?: any) => any;
       createInvalidInput: (invalidField: string, invalidValue: any) => any;
       wait: (ms: number) => Promise<void>;
     };
-  }
 }
+export {};

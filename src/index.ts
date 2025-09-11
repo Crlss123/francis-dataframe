@@ -14,12 +14,16 @@
  */
 
 // Load environment variables from .env file
-import 'dotenv/config';
-import { spawn } from 'child_process';
+import dotenv from 'dotenv';
+import { getBookingInfo, getScraperInfo } from './apis/python';
 import getWeather from './apis/weather';
 import { getDateRange } from './utils';
 import { WeatherRequest } from './apis/weather';
-import { createClient } from '@supabase/supabase-js';
+import { createHotelActivities, createRequest, createWeatherForecasts } from './supabaseController';
+import { runSystem } from './apis/sys';
+import { getHotelFacilities } from './apis/hotel';
+
+dotenv.config();
 
 import {
   createTool,
@@ -32,18 +36,20 @@ import {
 import { resolve } from 'path';
 import { json } from 'stream/consumers';
 import { request } from 'http';
+import { create } from 'domain';
 
 /**
  * Input interface defining the structure of data that users will provide
  * to this tool. This interface ensures type safety and enables automatic
  * validation and documentation generation.
  */
-interface FrancisInput {
+export interface FrancisInput {
   city: string;
   start_date: string;
   end_date: string;
   category: string[];
   price: number;
+  hotel: string;
 }
 
 /**
@@ -51,7 +57,7 @@ interface FrancisInput {
  * environment variables or configuration files. These settings typically
  * include API keys, service endpoints, and operational parameters.
  */
-interface FrancisConfig {
+export interface FrancisConfig {
   /** Optional API key for external service integrations */
   api_key?: string;
 }
@@ -61,7 +67,7 @@ interface FrancisConfig {
  * This tool implements the universal AI Spine contract, making it compatible
  * with all AI Spine platforms and runtimes.
  */
-const francisTool = createTool<FrancisInput, FrancisConfig>({
+export const francisTool = createTool<FrancisInput, FrancisConfig>({
   /**
    * Tool metadata provides information about the tool's identity,
    * capabilities, and usage. This information is used for documentation
@@ -121,6 +127,12 @@ const francisTool = createTool<FrancisInput, FrancisConfig>({
         min: 0,
         max: 10000,
       }),
+      hotel: stringField({
+        required: true,
+        description: 'The hotel where the user will be staying',
+        minLength: 1,
+        maxLength: 100,
+      }),
     },
 
     /**
@@ -148,127 +160,63 @@ const francisTool = createTool<FrancisInput, FrancisConfig>({
    */
   async execute(input, config, context) {
     console.log(`Executing francis tool with execution ID: ${context.executionId}`);
-
     try {
-      const supabase = createClient(
-        process.env.SUPABASE_URL as string,
-        process.env.SUPABASE_KEY as string
-      );
-      const { data, error } = await supabase.from('requests').insert({}).select();
-
-      const requestId = data?.[0]?.id ?? null;
-      // const result = await new Promise<string>((resolve, reject) => {
-      //   const python = spawn('python3', ['src/scripts/main.py'], {
-      //     env: {
-      //       ...process.env,
-      //       DB_PASSWORD: process.env.DB_PASSWORD,
-      //       SUPABASE_URL: process.env.SUPABASE_URL,
-      //       SUPABASE_KEY: process.env.SUPABASE_KEY,
-      //       RAPID_API_KEY: process.env.RAPID_API_KEY,
-      //       RAPID_API_HOST: process.env.RAPID_API_HOST,
-      //       BASE_URL: process.env.BASE_URL,
-      //     },
-      //   });
-
-      //   let output = '';
-      //   let errorOutput = '';
-
-      //   python.stdin.write(JSON.stringify(input));
-      //   python.stdin.end();
-
-      //   python.stdout.on('data', data => {
-      //     output += data.toString();
-      //   });
-
-      //   python.stderr.on('data', data => {
-      //     errorOutput += data.toString();
-      //   });
-
-      //   python.on('exit', (code, signal) => {
-      //     console.log('Python exited:', code, signal);
-      //   });
-
-      //   python.on('close', code => {
-      //     if (code !== 0) {
-      //       reject(new Error(`Python exited with code ${code}. Error: ${errorOutput}`));
-      //     } else {
-      //       resolve(output);
-      //     }
-      //   });
-      // });
+      const requestId = await createRequest();
 
       const startDate = input.start_date;
       const endDate = input.end_date;
       const location = input.city;
-      const category = input.category;
-      const price = input.price;
       const dateRange = getDateRange(startDate, endDate);
-      console.log(input);
+      const serviceInput = {
+        city: input.city,
+        start_date: input.start_date,
+        end_date: input.end_date,
+        category: input.category,
+        price: input.price,
+        hotel: input.hotel,
+        request_id: requestId,
+      };
+
+      // Fetches weather forecasts of the location in the date range
       const weatherRequest: WeatherRequest = {
         location,
         days: dateRange,
       };
-      const weatherReports = await getWeather(weatherRequest);
 
+      const weatherReports = await getWeather(weatherRequest);
       const forecasts = weatherReports.map(report => ({
         json: report,
         request_id: requestId,
       }));
 
-      const { data: weatherData, error: weatherError } = await supabase
-        .from('weather_forecasts')
-        .insert(forecasts);
+      createWeatherForecasts(forecasts);
 
-      const scrapping = await new Promise<any>((resolve, reject) => {
-        const python = spawn('python3', ['src/scripts/betterScrapper.py'], {
-          env: {
-            ...process.env,
-            GEMINI_API_KEY: process.env.GEMINI_API_KEY,
-            SUPABASE_URL: process.env.SUPABASE_URL,
-            SUPABASE_KEY: process.env.SUPABASE_KEY,
-          },
-        });
+      // Fetches hotel facilities
 
-        let output = '';
-        let errorOutput = '';
-
-        python.stdin.write(
-          JSON.stringify({
-            start_date: startDate,
-            end_date: endDate,
-            city: location,
-            category,
-            price,
-          })
-        );
-        python.stdin.end();
-
-        python.stdout.on('data', data => {
-          output += data.toString();
-        });
-
-        python.stderr.on('data', data => {
-          errorOutput += data.toString();
-        });
-
-        python.on('close', code => {
-          if (code !== 0) {
-            reject(new Error(`Python process exited with code ${code}: ${errorOutput}`));
-          } else {
-            try {
-              resolve(output);
-            } catch (err) {
-              reject(new Error('Error parsing Python output: ' + err));
-            }
-          }
-        });
+      const hotelResults = await getHotelFacilities({
+        ...input,
+        hotel: input.hotel || '',
       });
 
-      console.log(scrapping);
+      if (hotelResults && hotelResults.length > 0) {
+        const hotelRecords = hotelResults.map(hotel => ({
+          json: hotel,
+          request_id: requestId,
+        }));
+        createHotelActivities(hotelRecords);
+      }
+
+      // Fetches booking.com data from the python service
+      await getBookingInfo(serviceInput);
+
+      await getScraperInfo(serviceInput);
+
+      const output = await runSystem(requestId, input);
 
       return {
         status: 'success',
         data: {
+          output: output,
           metadata: {
             execution_id: context.executionId,
             timestamp: context.timestamp.toISOString(),
@@ -298,7 +246,7 @@ const francisTool = createTool<FrancisInput, FrancisConfig>({
  */
 async function main() {
   try {
-    await francisTool.start({
+    const server = await francisTool.start({
       // Server configuration from environment variables with sensible defaults
       port: process.env.PORT ? parseInt(process.env.PORT) : 3000,
       host: process.env.HOST || '0.0.0.0',
@@ -313,11 +261,14 @@ async function main() {
         requireAuth: process.env.API_KEY_AUTH === 'true',
         ...(process.env.VALID_API_KEYS && { apiKeys: process.env.VALID_API_KEYS.split(',') }),
       },
+
+      timeouts: {
+        execution: 240000,
+      },
     });
 
     console.log(`🚀 Francis tool server started successfully`);
     console.log(`📡 Listening on port ${process.env.PORT || 3000}`);
-    console.log(`🔗 Health check: http://localhost:${process.env.PORT || 3000}/health`);
   } catch (error) {
     console.error('Failed to start tool server:', error);
     process.exit(1);

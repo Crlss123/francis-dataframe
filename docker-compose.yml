@@ -1,0 +1,18 @@
+services:
+  tool:
+    build:
+      context: .
+    ports:
+      - "3000:3000"
+    depends_on:
+      - python_service
+    env_file:
+      - .env
+
+  python_service:
+    build:
+      context: ./python_service
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env

@@ -1,45 +1,31 @@
-# Multi-stage build for production optimization
-FROM node:18-alpine AS builder
+FROM node:20
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files
+# Install curl for healthcheck
+RUN apt-get update && apt-get install -y curl
+
+# Copy package files and config
 COPY package*.json ./
+COPY tsconfig.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Copy source code before installing (needed for build)
+COPY src/ ./src/
 
-# Copy source code
-COPY . .
+# Install and build
+RUN npm ci
 
-# Build the application
-RUN npm run build
+# Create a non-root user
+RUN groupadd -g 1001 tooluser && \
+    useradd -m -u 1001 -g tooluser tooluser
 
-# Production stage
-FROM node:18-alpine AS runner
-
-# Set working directory
-WORKDIR /app
-
-# Create non-root user
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 tooluser
-
-# Copy built application
-COPY --from=builder --chown=tooluser:nodejs /app/dist ./dist
-COPY --from=builder --chown=tooluser:nodejs /app/node_modules ./node_modules
-COPY --from=builder --chown=tooluser:nodejs /app/package.json ./package.json
-
-# Switch to non-root user
+# Set ownership and switch to non-root user
+RUN chown -R tooluser:tooluser /app
 USER tooluser
 
-# Expose port
 EXPOSE 3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:3000/health || exit 1
 
-# Start the application
 CMD ["npm", "start"]
