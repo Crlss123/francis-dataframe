@@ -196,7 +196,7 @@ El sistema utiliza **Supabase** para gestionar la información turística, solic
 
 ### Tablas principales
 
-| Dependencia             | Propósito                                                                 |
+| Tabla             | Propósito                                                                 |
 |--------------------------|---------------------------------------------------------------------------|
 | `requests`          | Solicitudes de los huéspedes (id, created_at).        |
 | `activities`   | Actividades turísticas (URL, nombre, horarios, días, precio, descripción, rating).  |
