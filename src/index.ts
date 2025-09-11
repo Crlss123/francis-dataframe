@@ -57,7 +57,7 @@ export interface FrancisInput {
  * environment variables or configuration files. These settings typically
  * include API keys, service endpoints, and operational parameters.
  */
-interface FrancisConfig {
+export interface FrancisConfig {
   /** Optional API key for external service integrations */
   api_key?: string;
 }
@@ -67,7 +67,7 @@ interface FrancisConfig {
  * This tool implements the universal AI Spine contract, making it compatible
  * with all AI Spine platforms and runtimes.
  */
-const francisTool = createTool<FrancisInput, FrancisConfig>({
+export const francisTool = createTool<FrancisInput, FrancisConfig>({
   /**
    * Tool metadata provides information about the tool's identity,
    * capabilities, and usage. This information is used for documentation
@@ -246,7 +246,7 @@ const francisTool = createTool<FrancisInput, FrancisConfig>({
  */
 async function main() {
   try {
-    await francisTool.start({
+    const server = await francisTool.start({
       // Server configuration from environment variables with sensible defaults
       port: process.env.PORT ? parseInt(process.env.PORT) : 3000,
       host: process.env.HOST || '0.0.0.0',

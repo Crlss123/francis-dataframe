@@ -48,7 +48,7 @@ ${JSON.stringify(weatherForecasts, null, 2)}
 **INSTRUCCIONES OBLIGATORIAS:**
 
 1. **USAR SOLO DATOS PROPORCIONADOS**:
-   - SOLAMENTE usa actividades del JSON "ACTIVIDADES_DISPONIBLES"
+   - SOLAMENTE usa actividades de los JSONs "ACTIVIDADES_DISPONIBLES" y "ACTIVIDADES DEL HOTEL EN EL QUE SE ALOJA EL USUARIO"
    - Copia EXACTAMENTE: name, description, location, price, url de cada actividad
    - NO modifiques nombres ni descripciones
    - NO inventes nuevas actividades
@@ -99,7 +99,7 @@ Si en ACTIVIDADES_DISPONIBLES tienes:
 
   try {
     const response = await client.models.generateContent({
-      model: 'gemini-2.0-flash-exp',
+      model: 'gemini-2.0-flash',
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: {
         temperature: 0.1,
@@ -150,7 +150,7 @@ Si en ACTIVIDADES_DISPONIBLES tienes:
     let parsedResponse;
     try {
       const responseText = response.text;
-      if(!responseText){
+      if (!responseText) {
         throw new Error('El modelo no devolvió ninguna respuesta');
       }
       parsedResponse = JSON.parse(responseText);

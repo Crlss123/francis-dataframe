@@ -3,7 +3,7 @@ FROM node:20
 WORKDIR /app
 
 # Install curl for healthcheck
-RUN apk add --no-cache curl
+RUN apt-get update && apt-get install -y curl
 
 # Copy package files and config
 COPY package*.json ./
@@ -15,9 +15,9 @@ COPY src/ ./src/
 # Install and build
 RUN npm ci
 
-# Create user for security
-RUN addgroup -g 1001 -S tooluser && \
-    adduser -S tooluser -u 1001 -G tooluser
+# Create a non-root user
+RUN groupadd -g 1001 tooluser && \
+    useradd -m -u 1001 -g tooluser tooluser
 
 # Set ownership and switch to non-root user
 RUN chown -R tooluser:tooluser /app
