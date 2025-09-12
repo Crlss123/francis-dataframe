@@ -201,6 +201,22 @@ El sistema utiliza **Supabase** para gestionar la información turística, solic
 | `weather_forecasts`             | Pronósticos climáticos (fecha, hora, temperatura, condición).          |
 
 ---
+## 🛠️ Dockerfile
+
+Para poder usar los comandos de Docker y Docker Compose descritos aquí, debes tener **Docker** instalado en tu sistema.  
+> Puedes descargarlo e instalarlo desde [https://www.docker.com/get-started](https://www.docker.com/get-started).
+
+1. **Construir los contenedores**
+
+```bash
+docker-compose build
+```
+2. **Levantar los contenedores**
+
+```bash
+docker-compose up
+```
+---
 ## ⚙️ Cómo correr tests
 
 1. **Instalar dependencias:**
