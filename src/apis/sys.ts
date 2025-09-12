@@ -88,7 +88,6 @@ Si en ACTIVIDADES_DISPONIBLES tienes:
 {
   "activity": "Museo XYZ",
   "description": "Un museo increíble...",
-  "location": "Centro",
   "price": "150",
   "url": "https://ejemplo.com",
   "time": "09:00-11:00",
@@ -120,7 +119,6 @@ Si en ACTIVIDADES_DISPONIBLES tienes:
                   properties: {
                     activity: { type: Type.STRING },
                     description: { type: Type.STRING },
-                    location: { type: Type.STRING },
                     price: { type: Type.STRING },
                     url: { type: Type.STRING },
                     time: { type: Type.STRING },
