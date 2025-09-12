@@ -108,7 +108,6 @@ Respuesta esperada:
           {
             "activity": "Chichén Itzá Full-Day Tour with Mayan Buffet, Cenote & Valladolid",
             "description": "Chichén Itzá in Style: A Great Journey Through Time\n\nStep into the past with our Chichén Itzá tou...",
-            "location": "Cancun",
             "price": "35",
             "url": "https://www.booking.com/attractions/mx/prwghutd4ejo-top-chichen-itza-full-day-tour-with-2-cenotes-valladolid-buffet.html",
             "time": "09:00-18:00",
@@ -124,7 +123,6 @@ Respuesta esperada:
           {
             "activity": "Chichen Itza, Cenote Sagrado and Valladolid from Cancun",
             "description": "Visit one of the 7 wonders of the modern world complemented by admission to a beautiful cenote in...",
-            "location": "Cancun",
             "price": "29",
             "url": "https://www.booking.com/attractions/mx/prljmifh351j-chichen-itza-cenote-sagrado-and-valladolid-from-cancun.html",
             "time": "09:00-18:00",
@@ -140,7 +138,6 @@ Respuesta esperada:
           {
             "activity": "Early morning Chichen Itza Tour: Cenote and Tequila Tasting",
             "description": "Embark on an exclusive journey with us to uncover the marvels of Chichen Itza, a remarkable Mayan...",
-            "location": "Cancun",
             "price": "28.86",
             "url": "https://www.booking.com/attractions/mx/prrpyizahee9-chichen-itza-cenote-and-valladolid-tour.html",
             "time": "06:30-16:00",
